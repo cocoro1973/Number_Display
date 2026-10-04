@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>受付・状態管理コントロール (カンバンボード)</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            padding: 20px;
+            background: #f0f2f5;
+            color: #333;
+            margin: 0;
+        }
+
+        .header-box {
+            background: #fff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-inline {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .form-inline input,
+        .form-inline select {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .btn-submit {
+            background: #1890ff;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .btn-submit:hover {
+            background: #40a9ff;
+        }
+
+        /* カンバンボード レイアウト */
+        .kanban-board {
+            display: flex;
+            gap: 15px;
+            overflow-x: auto;
+            padding-bottom: 20px;
+            min-height: 70vh;
+        }
+
+        .column {
+            flex: 1;
+            min-width: 220px;
+            background: #ebecf0;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .column-header {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 10px;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-list {
+            flex: 1;
+            min-height: 150px;
+            transition: background-color 0.2s ease;
+            border-radius: 6px;
+            padding: 5px;
+        }
+
+        .card-list.drag-over {
+            background-color: #dcdfe6;
+            border: 2px dashed #909399;
+        }
+
+        /* 各ステータスカラムの色指定 */
+        .col-waiting .column-header {
+            border-left: 5px solid #1890ff;
+        }
+
+        .col-calling .column-header {
+            border-left: 5px solid #13c2c2;
+        }
+
+        .col-exam .column-header {
+            border-left: 5px solid #faad14;
+        }
+
+        .col-hold .column-header {
+            border-left: 5px solid #fa8c16;
+        }
+
+        .col-completed .column-header {
+            border-left: 5px solid #8c8c8c;
+        }
+
+        /* カード要素 */
+        .card {
+            background: #fff;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            cursor: grab;
+            user-select: none;
+            transition: transform 0.1s, box-shadow 0.1s;
+        }
+
+        .card:active {
+            cursor: grabbing;
+        }
+
+        .card.dragging {
+            opacity: 0.4;
+            transform: scale(0.98);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .card-num {
+            font-size: 18px;
+            color: #1f1f1f;
+        }
+
+        .card-room {
+            background: #e6f7ff;
+            color: #1890ff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .card-body {
+            font-size: 14px;
+            color: #595959;
+        }
+
+        .card-order {
+            font-size: 11px;
+            color: #bfbfbf;
+            margin-top: 6px;
+            text-align: right;
+        }
+
+        /* 中待合の保護目安（上位3名）の強調ハイライト */
+        .col-waiting .card:nth-child(-n+3) {
+            border-left: 4px solid #52c41a;
+            background: #f6ffed;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ヘッダー＆新規受付フォーム -->
+    <div class="header-box">
+        <div class="form-inline">
+            <label><strong>診察室絞り込み:</strong></label>
+            <select id="roomFilter" onchange="filterRoom(this.value)">
+                <option value="" <%=selectedRoom==='' ? 'selected' : '' %>>全診察室を表示</option>
+                <% rooms.forEach(r=> { %>
+                    <option value="<%= r.診察室コード %>" <%=String(selectedRoom)===String(r.診察室コード) ? 'selected' : '' %>>
+                        <%= r.診察室名 %>
+                    </option>
+                    <% }) %>
+            </select>
+        </div>
+
+        <form action="/api/uketsuke" method="POST" class="form-inline">
+            <label><strong>新規受付:</strong></label>
+            受付No: <input type="number" name="uketsukeNumber" value="<%= nextUketsukeNumber %>" readonly
+                style="width:70px; background:#e9ecef; font-weight:bold;">
+            患者ID: <input type="text" name="patientId" required placeholder="P001" style="width:100px;" autofocus>
+            診察室:
+            <select name="roomCode">
+                <% rooms.forEach(r=> { %>
+                    <option value="<%= r.診察室コード %>" <%=String(selectedRoom)===String(r.診察室コード) ? 'selected' : '' %>>
+                        <%= r.診察室名 %>
+                    </option>
+                    <% }) %>
+            </select>
+            <button type="submit" class="btn-submit">受付登録</button>
+        </form>
+    </div>
+
+    <!-- カンバンボード表示 -->
+    <div class="kanban-board">
+
+        <!-- 1. 待機中（待ち行列） -->
+        <div class="column col-waiting">
+            <div class="column-header">待機中 (待ち行列) <span class="badge" id="count-WAITING">0</span></div>
+            <div class="card-list" data-status="WAITING">
+                <% list.filter(i=> i.ステータス === 'WAITING').forEach(item => { %>
+                    <div class="card" draggable="true" data-num="<%= item.受付番号 %>" data-room="<%= item.受付診察室コード %>">
+                        <div class="card-header">
+                            <span class="card-num">No.<%= String(item.受付番号).padStart(3, '0' ) %></span>
+                            <span class="card-room">
+                                <%= item.受付診察室コード %>診
+                            </span>
+                        </div>
+                        <div class="card-body">患者ID: <%= item.患者番号 %>
+                        </div>
+                        <div class="card-order">表示順: <%= item.表示順 ? parseFloat(item.表示順).toFixed(4) : '-' %>
+                        </div>
+                    </div>
+                    <% }) %>
+            </div>
+        </div>
+
+        <!-- 2. 診察中 / 呼出中 -->
+        <div class="column col-calling">
+            <div class="column-header">診察中 (呼出) <span class="badge" id="count-CALLING">0</span></div>
+            <div class="card-list" data-status="CALLING">
+                <% list.filter(i=> i.ステータス === 'CALLING').forEach(item => { %>
+                    <div class="card" draggable="true" data-num="<%= item.受付番号 %>" data-room="<%= item.受付診察室コード %>">
+                        <div class="card-header">
+                            <span class="card-num">No.<%= String(item.受付番号).padStart(3, '0' ) %></span>
+                            <span class="card-room">
+                                <%= item.受付診察室コード %>診
+                            </span>
+                        </div>
+                        <div class="card-body">患者ID: <%= item.患者番号 %>
+                        </div>
+                    </div>
+                    <% }) %>
+            </div>
+        </div>
+
+        <!-- 3. 検査中 -->
+        <div class="column col-exam">
+            <div class="column-header">検査中 <span class="badge" id="count-EXAM">0</span></div>
+            <div class="card-list" data-status="EXAM">
+                <% list.filter(i=> i.ステータス === 'EXAM').forEach(item => { %>
+                    <div class="card" draggable="true" data-num="<%= item.受付番号 %>" data-room="<%= item.受付診察室コード %>">
+                        <div class="card-header">
+                            <span class="card-num">No.<%= String(item.受付番号).padStart(3, '0' ) %></span>
+                            <span class="card-room">
+                                <%= item.受付診察室コード %>診
+                            </span>
+                        </div>
+                        <div class="card-body">患者ID: <%= item.患者番号 %>
+                        </div>
+                    </div>
+                    <% }) %>
+            </div>
+        </div>
+
+        <!-- 4. 保留 -->
+        <div class="column col-hold">
+            <div class="column-header">保留 <span class="badge" id="count-HOLD">0</span></div>
+            <div class="card-list" data-status="HOLD">
+                <% list.filter(i=> i.ステータス === 'HOLD').forEach(item => { %>
+                    <div class="card" draggable="true" data-num="<%= item.受付番号 %>" data-room="<%= item.受付診察室コード %>">
+                        <div class="card-header">
+                            <span class="card-num">No.<%= String(item.受付番号).padStart(3, '0' ) %></span>
+                            <span class="card-room">
+                                <%= item.受付診察室コード %>診
+                            </span>
+                        </div>
+                        <div class="card-body">患者ID: <%= item.患者番号 %>
+                        </div>
+                    </div>
+                    <% }) %>
+            </div>
+        </div>
+
+        <!-- 5. 完了 -->
+        <div class="column col-completed">
+            <div class="column-header">完了 <span class="badge" id="count-COMPLETED">0</span></div>
+            <div class="card-list" data-status="COMPLETED">
+                <% list.filter(i=> i.ステータス === 'COMPLETED').forEach(item => { %>
+                    <div class="card" draggable="true" data-num="<%= item.受付番号 %>" data-room="<%= item.受付診察室コード %>">
+                        <div class="card-header">
+                            <span class="card-num">No.<%= String(item.受付番号).padStart(3, '0' ) %></span>
+                            <span class="card-room">
+                                <%= item.受付診察室コード %>診
+                            </span>
+                        </div>
+                        <div class="card-body">患者ID: <%= item.患者番号 %>
+                        </div>
+                    </div>
+                    <% }) %>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let draggedCard = null;
+
+        // カウントの初期更新
+        updateCounts();
+
+        // 診察室フィルタ切り替え
+        function filterRoom(roomCode) {
+            window.location.href = roomCode ? '/admin?room=' + roomCode : '/admin';
+        }
+
+        // カウント表示の更新
+        function updateCounts() {
+            document.querySelectorAll('.card-list').forEach(list => {
+                const status = list.dataset.status;
+                const count = list.querySelectorAll('.card').length;
+                const badge = document.getElementById(`count-${status}`);
+                if (badge) badge.innerText = count;
+            });
+        }
+
+        // ドラッグ＆ドロップ イベントハンドラーの設定
+        document.querySelectorAll('.card').forEach(card => {
+            card.addEventListener('dragstart', (e) => {
+                draggedCard = card;
+                card.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('dragging');
+                draggedCard = null;
+            });
+        });
+
+        document.querySelectorAll('.card-list').forEach(list => {
+            list.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                list.classList.add('drag-over');
+
+                // ドラッグ位置に応じた挿入先の判定
+                const afterElement = getDragAfterElement(list, e.clientY);
+                if (afterElement == null) {
+                    list.appendChild(draggedCard);
+                } else {
+                    list.insertBefore(draggedCard, afterElement);
+                }
+            });
+
+            list.addEventListener('dragleave', () => {
+                list.classList.remove('drag-over');
+            });
+
+            list.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                list.classList.remove('drag-over');
+
+                if (!draggedCard) return;
+
+                const targetStatus = list.dataset.status;
+                const uketsukeNumber = draggedCard.dataset.num;
+                const roomCode = draggedCard.dataset.room; // 移動するカードの診察室コード
+
+                // ★ 1. 診察中（CALLING）への移動チェック
+                if (targetStatus === 'CALLING') {
+                    // 移動先（CALLINGカラム内）にあるカードを取得
+                    const callingCards = [...list.querySelectorAll('.card:not(.dragging)')];
+
+                    // 「全診察室表示」または「同じ診察室」のカードがすでにないか確認
+                    const hasDuplicateRoom = callingCards.some(card => card.dataset.room === roomCode);
+
+                    if (hasDuplicateRoom) {
+                        alert(`診察室${roomCode} は現在別の患者が診察中です。\n先に完了・検査中・保留に移動させてから呼出してください。`);
+                        location.reload(); // カード位置を元に戻すためにリロード
+                        return;
+                    }
+                }
+
+                // ★ 2. 問題なければサーバーへ更新リクエスト
+                await saveStatusChange(uketsukeNumber, targetStatus);
+            });
+        });
+
+        // マウスカーソルの上下位置から挿入対象の要素を特定する関数
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
+
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        // サーバへステータス変更・順序更新を送信
+        async function saveStatusChange(uketsukeNumber, newStatus) {
+            try {
+                const res = await fetch('/api/status-change', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ uketsukeNumber: uketsukeNumber, newStatus: newStatus })
+                });
+
+                if (res.ok) {
+                    updateCounts();
+                    // 表示順などの正確な再計算結果を反映するためリロード
+                    location.reload();
+                } else {
+                    alert('状態の更新に失敗しました');
+                    location.reload();
+                }
+            } catch (err) {
+                console.error(err);
+                alert('通信エラーが発生しました');
+            }
+        }
+    </script>
+</body>
+
+</html>

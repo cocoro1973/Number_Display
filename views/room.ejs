@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <title>診察室案内</title>
+  <style>
+    body {
+      background: #134074;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      margin: 0;
+    }
+
+    header {
+      font-size: 3rem;
+      padding: 20px;
+      background: #0b2545;
+      text-align: center;
+    }
+
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+      padding: 20px;
+    }
+
+    .call-box {
+      background: #fff;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+    }
+
+    .call-title {
+      font-size: 2rem;
+      color: #0077b6;
+    }
+
+    .call-number {
+      font-size: 9rem;
+      font-weight: bold;
+      color: #d90429;
+    }
+
+    .wait-box {
+      background: #0077b6;
+      padding: 20px;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .wait-title {
+      font-size: 2rem;
+      text-align: center;
+    }
+
+    .wait-num {
+      background: #1d2d44;
+      font-size: 3rem;
+      text-align: center;
+      padding: 10px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+
+<body>
+  <header id="room-name">診察室</header>
+  <main>
+    <div class="call-box">
+      <div class="call-title">ただいまの呼出番号</div>
+      <div class="call-number" id="call-num">---</div>
+    </div>
+    <div class="wait-box">
+      <div class="wait-title">中待合・待ち番号</div>
+      <div id="wait-list"></div>
+    </div>
+  </main>
+
+  <script>
+    const roomCode = "<%= roomCode %>";
+
+    async function updateRoomDisplay() {
+      const res = await fetch(`/api/display-data?room=${roomCode}`);
+      const data = await res.json();
+      if (data.length === 0) return;
+
+      const room = data[0];
+      document.getElementById('room-name').textContent = `${room.診察室名} (${room.担当医師名})`;
+      document.getElementById('call-num').textContent = room.呼出番号 || '---';
+
+      const waitListDiv = document.getElementById('wait-list');
+      waitListDiv.innerHTML = '';
+      (room.待ちリスト || []).slice(0, 4).forEach(num => {
+        waitListDiv.innerHTML += `<div class="wait-num">${num}</div>`;
+      });
+    }
+
+    setInterval(updateRoomDisplay, 3000);
+    updateRoomDisplay();
+  </script>
+</body>
+
+</html>

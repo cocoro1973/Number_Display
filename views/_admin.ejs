@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>受付・状態管理コントロール</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f4f6f9; }
+    .box { background: #fff; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+    .filter-box { display: flex; align-items: center; gap: 10px; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    button { padding: 5px 10px; margin: 2px; cursor: pointer; }
+    .btn-call { background: #d90429; color: #fff; border:none; }
+    .btn-wait { background: #0077b6; color: #fff; border:none; }
+
+    /* ★ 行の背景色スタイル定義 */
+    tr.row-calling { background-color: #e0f7fa !important; } /* 診察中: 水色 */
+    tr.row-exam    { background-color: #fff9c4 !important; } /* 検査中: 黄色 */
+    tr.row-hold    { background-color: #ffe0b2 !important; } /* 保留: オレンジ */
+    tr.row-completed { background-color: #f5f5f5; color: #888; } /* 完了: 薄いグレー */
+  </style>
+</head>
+<body>
+
+  <!-- 診察室の絞り込み切り替えヘッダー -->
+  <div class="box filter-box">
+    <label for="roomFilter">表示対象の診察室:</label>
+    <select id="roomFilter" onchange="filterRoom(this.value)">
+      <option value="" <%= selectedRoom === '' ? 'selected' : '' %>>全診察室を表示</option>
+      <% rooms.forEach(r => { %>
+        <option value="<%= r.診察室コード %>" <%= String(selectedRoom) === String(r.診察室コード) ? 'selected' : '' %>>
+          <%= r.診察室名 %>
+        </option>
+      <% }) %>
+    </select>
+  </div>
+
+  <div class="box">
+    <h2>新規受付登録</h2>
+    <form action="/api/uketsuke" method="POST" id="uketsukeForm">
+      受付番号: 
+      <input type="number" name="uketsukeNumber" value="<%= nextUketsukeNumber %>" readonly style="background-color: #e9ecef; font-weight: bold;">
+      
+      患者ID: <input type="text" name="patientId" required autofocus>
+      
+      診察室: 
+      <select name="roomCode">
+        <% rooms.forEach(r => { %>
+          <option value="<%= r.診察室コード %>" <%= String(selectedRoom) === String(r.診察室コード) ? 'selected' : '' %>>
+            <%= r.診察室名 %>
+          </option>
+        <% }) %>
+      </select>
+      <button type="submit">受付登録</button>
+    </form>
+  </div>
+
+  <div class="box">
+    <h2>本日受付一覧・状態コントロール</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>表示順</th><th>受付番号</th><th>患者ID</th><th>診察室</th><th>現在ステータス</th><th>操作ボタン</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% 
+          // 日本語表示とCSS用の定義マップ
+          const statusMap = {
+            'WAITING':   { label: '待機中', class: 'row-waiting' },
+            'CALLING':   { label: '診察中', class: 'row-calling' },
+            'EXAM':      { label: '検査中', class: 'row-exam' },
+            'HOLD':      { label: '保留',   class: 'row-hold' },
+            'COMPLETED': { label: '完了',   class: 'row-completed' }
+          };
+        %>
+        <% list.forEach(item => { %>
+          <% 
+            const statusInfo = statusMap[item.ステータス] || { label: item.ステータス, class: '' };
+          %>
+          <!-- ★ ステータスに応じた class を tr に付与 -->
+          <tr class="<%= statusInfo.class %>">
+            <td><strong><%= item.表示順 ? parseFloat(item.表示順).toFixed(4) : '-' %></strong></td>
+            <td><%= String(item.受付番号).padStart(3, '0') %></td>
+            <td><%= item.患者番号 %></td>
+            <td><%= item.受付診察室コード %>診</td>
+            <!-- ★ ステータス名を日本語表示 -->
+            <td><b><%= statusInfo.label %></b></td>
+            <td>
+              <button class="btn-call" onclick="changeStatus('<%= item.受付番号 %>', 'CALLING')">診察(呼出)</button>
+              <button onclick="changeStatus('<%= item.受付番号 %>', 'EXAM')">検査へ</button>
+              <button onclick="changeStatus('<%= item.受付番号 %>', 'HOLD')">保留</button>
+              <button class="btn-wait" onclick="changeStatus('<%= item.受付番号 %>', 'WAITING')">待機復帰(割り込み)</button>
+              <button onclick="changeStatus('<%= item.受付番号 %>', 'COMPLETED')">完了</button>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    function filterRoom(roomCode) {
+      if (roomCode) {
+        window.location.href = '/admin?room=' + roomCode;
+      } else {
+        window.location.href = '/admin';
+      }
+    }
+
+    async function changeStatus(num, status) {
+      const res = await fetch('/api/status-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uketsukeNumber: num, newStatus: status })
+      });
+      if (res.ok) {
+        location.reload();
+      } else {
+        alert('ステータス更新に失敗しました');
+      }
+    }
+  </script>
+</body>
+</html>

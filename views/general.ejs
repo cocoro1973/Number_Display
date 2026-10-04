@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>総合待合室 案内表示</title>
+  <style>
+    body { background: #0b2545; color: #fff; font-family: sans-serif; padding: 10px; }
+    .room-row { display: flex; background: #fff; color: #333; margin-bottom: 10px; border-radius: 5px; height: 120px; overflow: hidden; }
+    .room-info { width: 200px; background: #0077b6; color: #fff; padding: 10px; font-size: 1.8rem; font-weight: bold; }
+    .call-num { width: 180px; background: #eef2f5; color: #d90429; font-size: 3.5rem; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+    .wait-list { flex: 1; background: #111; display: flex; align-items: center; padding: 0 10px; gap: 10px; }
+    .wait-item { background: #1d2d44; color: #fff; font-size: 2rem; padding: 10px 15px; border-radius: 4px; }
+    .wait-item.nakamachi { border: 2px solid #ffd166; color: #ffd166; } /* 中待合3枠の強調 */
+  </style>
+</head>
+<body>
+  <h1>総合待合 診察案内</h1>
+  <div id="container"></div>
+
+  <script>
+    async function updateDisplay() {
+      const res = await fetch('/api/display-data');
+      const data = await res.json();
+      
+      const container = document.getElementById('container');
+      container.innerHTML = '';
+
+      data.forEach(room => {
+        let waitHtml = '';
+        // 待ち番号の描画（最初の3つを「中待合枠」として強調）
+        (room.待ちリスト || []).slice(0, 6).forEach((num, index) => {
+          const isNakamachi = index < 3 ? 'nakamachi' : '';
+          waitHtml += `<div class="wait-item ${isNakamachi}">${num}</div>`;
+        });
+
+        container.innerHTML += `
+          <div class="room-row">
+            <div class="room-info">${room.診察室名}<br><span style="font-size:1rem">${room.担当医師名}</span></div>
+            <div class="call-num">${room.呼出番号 || '---'}</div>
+            <div class="wait-list">${waitHtml}</div>
+          </div>
+        `;
+      });
+    }
+
+    setInterval(updateDisplay, 3000);
+    updateDisplay();
+  </script>
+</body>
+</html>
